@@ -31,28 +31,41 @@ public class RequestHandler extends Thread {
 			DataOutputStream dos = new DataOutputStream(out);
 			BufferedReader br = new BufferedReader(new InputStreamReader(in, "UTF-8"));
 			
-			Map<String, String> header = new HashMap<>();
+			Map<String, String> header = readHttpHeader(br);
+			log.debug("header => {}", header.toString());
 			
-			String line = br.readLine();
-			if (line == null) {
-				return;
-			}
-			String url = line.split(" ")[1];
-			
-			while (!"".equals(line)) {
-				String[] headerTokens = line.split(": ");
-				if (headerTokens.length == 2)
-					header.put(headerTokens[0], headerTokens[1]);
-				
-				line = br.readLine();
-			}
-			
-			byte[] body = Files.readAllBytes(new File("./webapp" + url).toPath());
+			byte[] body = Files.readAllBytes(new File("./webapp" + header.get("Url")).toPath());
 			response200Header(dos, body.length);
 			responseBody(dos, body);
 		} catch (IOException e) {
 			log.error(e.getMessage());
 		}
+	}
+	
+	private Map<String, String> readHttpHeader(BufferedReader br) throws IOException {
+		Map<String, String> header = new HashMap<>();
+		
+		String line = br.readLine();
+		if (line == null) {
+			return null;
+		}
+		
+		String[] firstInfo = line.split(" ");
+		
+		header.put("Method", firstInfo[0]);
+		header.put("Url", firstInfo[1]);
+		
+		while (!"".equals((line = br.readLine()))) {
+			makeHeader(header, line);
+		}
+		
+		return header;
+	}
+
+	private void makeHeader(Map<String, String> header, String line) {
+		String[] headerTokens = line.split(": ");
+		if (headerTokens.length == 2)
+			header.put(headerTokens[0], headerTokens[1]);
 	}
 
 	private void response200Header(DataOutputStream dos, int lengthOfBodyContent) {
