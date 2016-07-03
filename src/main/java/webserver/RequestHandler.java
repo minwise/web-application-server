@@ -45,12 +45,15 @@ public class RequestHandler extends Thread {
 					
 					User user = addUserFromParams(params);
 					log.debug("[GET] user => {}", user.toString());
+					
 				} else if (header.get("Method").equals("POST")) {
 					String contentLength = header.get("Content-Length");
 					String params = util.IOUtils.readData(br, Integer.parseInt(contentLength));
 					
 					User user = addUserFromParams(params);
 					log.debug("[POST] user => {}", user.toString());
+					
+					response302Header(dos);
 				}
 			}
 			
@@ -91,16 +94,12 @@ public class RequestHandler extends Thread {
 		header.put("Url", firstInfo[1]);
 		
 		while (!"".equals((line = br.readLine()))) {
-			makeHeader(header, line);
+			String[] headerTokens = line.split(": ");
+			if (headerTokens.length == 2)
+				header.put(headerTokens[0], headerTokens[1]);
 		}
 		
 		return header;
-	}
-
-	private void makeHeader(Map<String, String> header, String line) {
-		String[] headerTokens = line.split(": ");
-		if (headerTokens.length == 2)
-			header.put(headerTokens[0], headerTokens[1]);
 	}
 
 	private void response200Header(DataOutputStream dos, int lengthOfBodyContent) {
@@ -108,6 +107,16 @@ public class RequestHandler extends Thread {
 			dos.writeBytes("HTTP/1.1 200 OK \r\n");
 			dos.writeBytes("Content-Type: text/html;charset=utf-8\r\n");
 			dos.writeBytes("Content-Length: " + lengthOfBodyContent + "\r\n");
+			dos.writeBytes("\r\n");
+		} catch (IOException e) {
+			log.error(e.getMessage());
+		}
+	}
+	
+	private void response302Header(DataOutputStream dos) {
+		try {
+			dos.writeBytes("HTTP/1.1 302 Redirect \r\n");
+			dos.writeBytes("Location: /index.html\r\n");
 			dos.writeBytes("\r\n");
 		} catch (IOException e) {
 			log.error(e.getMessage());
