@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 
 import db.DataBase;
 import model.User;
+import util.HttpRequestUtils;
 
 public class RequestHandler extends Thread {
 	private static final Logger log = LoggerFactory.getLogger(RequestHandler.class);
@@ -40,15 +41,16 @@ public class RequestHandler extends Thread {
 			if (header.get("Url").startsWith("/user/create")) {
 				if (header.get("Method").equals("GET")) {
 					String url = header.get("Url");
-					int idx = url.indexOf("?");
-					String requestPath = url.substring(0, idx);
-					String params = url.substring(idx + 1);
+					String params = getParamsFromGetUrl(url);
 					
-					Map<String, String> userMap = util.HttpRequestUtils.parseQueryString(params);
-					User user = new User(userMap.get("userId"), userMap.get("password"), 
-							userMap.get("name"), userMap.get("email"));
-					DataBase.addUser(user);
-					log.debug("user => {}", user.toString());
+					User user = addUserFromParams(params);
+					log.debug("[GET] user => {}", user.toString());
+				} else if (header.get("Method").equals("POST")) {
+					String contentLength = header.get("Content-Length");
+					String params = util.IOUtils.readData(br, Integer.parseInt(contentLength));
+					
+					User user = addUserFromParams(params);
+					log.debug("[POST] user => {}", user.toString());
 				}
 			}
 			
@@ -58,6 +60,21 @@ public class RequestHandler extends Thread {
 		} catch (IOException e) {
 			log.error(e.getMessage());
 		}
+	}
+
+	private User addUserFromParams(String params) {
+		Map<String, String> userMap = util.HttpRequestUtils.parseQueryString(params);
+		User user = new User(userMap.get("userId"), userMap.get("password"), 
+				userMap.get("name"), userMap.get("email"));
+		DataBase.addUser(user);
+		return user;
+	}
+	
+	private String getParamsFromGetUrl(String url) {
+		int idx = url.indexOf("?");
+		String requestPath = url.substring(0, idx);
+		String params = url.substring(idx + 1);
+		return params;
 	}
 	
 	private Map<String, String> readHttpHeader(BufferedReader br) throws IOException {
