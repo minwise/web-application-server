@@ -15,6 +15,9 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import db.DataBase;
+import model.User;
+
 public class RequestHandler extends Thread {
 	private static final Logger log = LoggerFactory.getLogger(RequestHandler.class);
 	
@@ -33,6 +36,21 @@ public class RequestHandler extends Thread {
 			
 			Map<String, String> header = readHttpHeader(br);
 			log.debug("header => {}", header.toString());
+			
+			if (header.get("Url").startsWith("/user/create")) {
+				if (header.get("Method").equals("GET")) {
+					String url = header.get("Url");
+					int idx = url.indexOf("?");
+					String requestPath = url.substring(0, idx);
+					String params = url.substring(idx + 1);
+					
+					Map<String, String> userMap = util.HttpRequestUtils.parseQueryString(params);
+					User user = new User(userMap.get("userId"), userMap.get("password"), 
+							userMap.get("name"), userMap.get("email"));
+					DataBase.addUser(user);
+					log.debug("user => {}", user.toString());
+				}
+			}
 			
 			byte[] body = Files.readAllBytes(new File("./webapp" + header.get("Url")).toPath());
 			response200Header(dos, body.length);
