@@ -9,6 +9,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.file.Files;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -32,13 +33,25 @@ public class RequestHandler extends Thread {
 		log.debug("New Client Connect! Connected IP : {}, Port : {}", connection.getInetAddress(), connection.getPort());
 		
 		try (InputStream in = connection.getInputStream(); OutputStream out = connection.getOutputStream()) {
-			DataOutputStream dos = new DataOutputStream(out);
+			
 			BufferedReader br = new BufferedReader(new InputStreamReader(in, "UTF-8"));
 			
 			Map<String, String> header = readHttpHeader(br);
+			if (header == null) {
+				return;
+			}
 			log.debug("header => {}", header.toString());
 			
-			if (header.get("Url").startsWith("/user/create")) {
+			boolean logined = false;
+			if (header.containsKey("Cookie")) {
+				Map<String, String> cookies = HttpRequestUtils.parseCookies(header.get("Cookie"));
+				String value = cookies.get("logined");
+				if (value == null)
+					logined = false;
+				logined = Boolean.parseBoolean(value);
+			}
+			
+			if (header.get("Url").equals("/user/create")) {
 				if (header.get("Method").equals("GET")) {
 					String url = header.get("Url");
 					String params = getParamsFromGetUrl(url);
@@ -51,9 +64,10 @@ public class RequestHandler extends Thread {
 					User user = addUserFromParams(params);
 					log.debug("[POST] user => {}", user.toString());
 					
+					DataOutputStream dos = new DataOutputStream(out);
 					response302Header(dos, "/index.html");
 				}
-			} else if (header.get("Url").startsWith("/user/login")) {
+			} else if (header.get("Url").equals("/user/login")) {
 				if (header.get("Method").equals("POST")) {
 					String contentLength = header.get("Content-Length");
 					String params = util.IOUtils.readData(br, Integer.parseInt(contentLength));
@@ -62,26 +76,55 @@ public class RequestHandler extends Thread {
 					User user = DataBase.findUserById(userMap.get("userId"));
 					if (user == null) {
 						log.error("User is not found...");
-						response302Header(dos, "/user/login_failed.html");
+						responseResource(out, "/user/login_failed.html");
 					} else {
 						if (user.getPassword().equals(userMap.get("password"))) {
 							log.debug("login success!!");
-							response302Header(dos, "/index.html");
+							DataOutputStream dos = new DataOutputStream(out);
+							response302HeaderWithCookie(dos, "/index.html", "logined=true");
 						} else {
 							log.debug("login failed...");
-							response302Header(dos, "/user/login_failed.html");
+							DataOutputStream dos = new DataOutputStream(out);
+							responseResource(out, "/user/login_failed.html");
+							//response302HeaderWithCookie(dos, "/user/login_failed.html", "logined=false");
 						}
 					}
 				}
+			} else if (header.get("Url").equals("/user/list")) {
+				if (!logined) {
+					log.debug("you are not logged in!!!!!!!!!!!!!");
+					responseResource(out, "/user/login.html");
+					return;
+				}
+				
+				Collection<User> users = DataBase.findAll();
+				StringBuilder sb = new StringBuilder();
+				sb.append("<table border='1'>");
+				for (User user : users) {
+					sb.append("<tr>");
+					sb.append("<td>" + user.getUserId() + "</td>");
+					sb.append("<td>" + user.getName() + "</td>");
+					sb.append("<td>" + user.getEmail() + "</td>");
+					sb.append("</tr>");
+				}
+				sb.append("</table>");
+				byte[] body = sb.toString().getBytes();
+				DataOutputStream dos = new DataOutputStream(out);
+				response200Header(dos, body.length);
+				responseBody(dos, body);
+				log.debug("you are logged in!!");
+			} else if (header.get("Url").endsWith(".css")) {
+				responseCssResource(out, header.get("Url"));
+			} else {
+				log.debug("Request url : {}", header.get("Url"));
+				responseResource(out, header.get("Url"));
 			}
-			
-			byte[] body = Files.readAllBytes(new File("./webapp" + header.get("Url")).toPath());
-			response200Header(dos, body.length);
-			responseBody(dos, body);
 		} catch (IOException e) {
 			log.error(e.getMessage());
 		}
 	}
+
+	
 
 	private User addUserFromParams(String params) {
 		Map<String, String> userMap = util.HttpRequestUtils.parseQueryString(params);
@@ -119,6 +162,22 @@ public class RequestHandler extends Thread {
 		
 		return header;
 	}
+	
+	private void responseResource(OutputStream out, String url) throws IOException {
+		DataOutputStream dos = new DataOutputStream(out);
+
+		byte[] body = Files.readAllBytes(new File("./webapp" + url).toPath());
+		response200Header(dos, body.length);
+		responseBody(dos, body);
+	}
+	
+	private void responseCssResource(OutputStream out, String url) throws IOException {
+		DataOutputStream dos = new DataOutputStream(out);
+
+		byte[] body = Files.readAllBytes(new File("./webapp" + url).toPath());
+		response200CssHeader(dos, body.length);
+		responseBody(dos, body);
+	}
 
 	private void response200Header(DataOutputStream dos, int lengthOfBodyContent) {
 		try {
@@ -131,10 +190,32 @@ public class RequestHandler extends Thread {
 		}
 	}
 	
+	private void response200CssHeader(DataOutputStream dos, int lengthOfBodyContent) {
+		try {
+			dos.writeBytes("HTTP/1.1 200 OK \r\n");
+			dos.writeBytes("Content-Type: text/css;charset=utf-8\r\n");
+			dos.writeBytes("Content-Length: " + lengthOfBodyContent + "\r\n");
+			dos.writeBytes("\r\n");
+		} catch (IOException e) {
+			log.error(e.getMessage());
+		}
+	}
+	
 	private void response302Header(DataOutputStream dos, String redirectUrl) {
 		try {
 			dos.writeBytes("HTTP/1.1 302 Redirect \r\n");
 			dos.writeBytes("Location: " + redirectUrl + "\r\n");
+			dos.writeBytes("\r\n");
+		} catch (IOException e) {
+			log.error(e.getMessage());
+		}
+	}
+	
+	private void response302HeaderWithCookie(DataOutputStream dos, String redirectUrl, String Cookie) {
+		try {
+			dos.writeBytes("HTTP/1.1 302 Redirect \r\n");
+			dos.writeBytes("Location: " + redirectUrl + "\r\n");
+			dos.writeBytes("Set-Cookie: " + Cookie + "\r\n");
 			dos.writeBytes("\r\n");
 		} catch (IOException e) {
 			log.error(e.getMessage());
