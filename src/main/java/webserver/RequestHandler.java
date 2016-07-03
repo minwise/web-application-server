@@ -45,15 +45,33 @@ public class RequestHandler extends Thread {
 					
 					User user = addUserFromParams(params);
 					log.debug("[GET] user => {}", user.toString());
-					
 				} else if (header.get("Method").equals("POST")) {
 					String contentLength = header.get("Content-Length");
 					String params = util.IOUtils.readData(br, Integer.parseInt(contentLength));
-					
 					User user = addUserFromParams(params);
 					log.debug("[POST] user => {}", user.toString());
 					
-					response302Header(dos);
+					response302Header(dos, "/index.html");
+				}
+			} else if (header.get("Url").startsWith("/user/login")) {
+				if (header.get("Method").equals("POST")) {
+					String contentLength = header.get("Content-Length");
+					String params = util.IOUtils.readData(br, Integer.parseInt(contentLength));
+					Map<String, String> userMap = util.HttpRequestUtils.parseQueryString(params);
+					
+					User user = DataBase.findUserById(userMap.get("userId"));
+					if (user == null) {
+						log.error("User is not found...");
+						response302Header(dos, "/user/login_failed.html");
+					} else {
+						if (user.getPassword().equals(userMap.get("password"))) {
+							log.debug("login success!!");
+							response302Header(dos, "/index.html");
+						} else {
+							log.debug("login failed...");
+							response302Header(dos, "/user/login_failed.html");
+						}
+					}
 				}
 			}
 			
@@ -113,10 +131,10 @@ public class RequestHandler extends Thread {
 		}
 	}
 	
-	private void response302Header(DataOutputStream dos) {
+	private void response302Header(DataOutputStream dos, String redirectUrl) {
 		try {
 			dos.writeBytes("HTTP/1.1 302 Redirect \r\n");
-			dos.writeBytes("Location: /index.html\r\n");
+			dos.writeBytes("Location: " + redirectUrl + "\r\n");
 			dos.writeBytes("\r\n");
 		} catch (IOException e) {
 			log.error(e.getMessage());
