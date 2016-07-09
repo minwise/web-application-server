@@ -16,11 +16,9 @@ import util.IOUtils;
 public class HttpRequest {
 	private static final Logger log = LoggerFactory.getLogger(HttpRequest.class);
 	BufferedReader br;
-	HttpMethod method;
-	String url;
-	String path;
 	Map<String, String> header = new HashMap<>();
-	Map<String, String> params = new HashMap<>();
+	Map<String, String> params;
+	RequestLine rl;
 	
 	public HttpRequest(InputStream in) throws IOException {
 		 br = new BufferedReader(new InputStreamReader(in, "UTF-8"));
@@ -28,19 +26,16 @@ public class HttpRequest {
 		 String line = br.readLine();
 		 if (line == null) return;
 		 
-		 String[] tokens = line.split(" ");
-		 method = HttpMethod.valueOf(tokens[0]);
-		 url = tokens[1];
+		 rl = new RequestLine(line);
 		 
 		 while (!"".equals((line = br.readLine()))) {
-			 tokens = line.split(": ");
+			 String[] tokens = line.split(": ");
 			 if (tokens.length == 2) {
 				 header.put(tokens[0], tokens[1]);
 			 }
 		 }
 		 
-		 if (method.isPost()) {
-			 path = url;
+		 if (rl.isPost()) {
 			 String contentLength = header.get("Content-Length");
 			 if (contentLength == null) {
 				 throw new RuntimeException();
@@ -49,30 +44,23 @@ public class HttpRequest {
 			 String body = IOUtils.readData(br, Integer.parseInt(contentLength));
 			 params = HttpRequestUtils.parseQueryString(body);
 		 } else {
-			 int idx = url.indexOf("?");
-			 if (idx == -1) {
-				 path = url;
-			 } else {
-				 path = url.substring(0, idx);
-				 String parameters = url.substring(idx + 1);
-				 params = HttpRequestUtils.parseQueryString(parameters);
-			 }
+			 params = rl.getParameter();
 		 }
 	}
 
 	public HttpMethod getMethod() {
-		return this.method;
+		return rl.getMethod();
 	}
 
 	public String getPath() {
-		return this.path;
+		return rl.getPath();
 	}
 
 	public String getHeader(String key) {
 		return header.get(key);
 	}
 
-	public Object getParameter(String key) {
+	public String getParameter(String key) {
 		return params.get(key);
 	}
 }
